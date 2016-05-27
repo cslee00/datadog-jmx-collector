@@ -1,0 +1,11 @@
+[
+  {
+    "jvmSelector": "#appArgs.startsWith('org.jetbrains.jps.cmdline.Launcher')",
+    "jvmNameExtractor": "#systemProps['medaccess.node']",
+    "tags": ["jvm-type:medaccess-emr"],
+    "metricSetRefs": [
+      "tomcat-metrics.json"
+    ]
+  }
+]
+

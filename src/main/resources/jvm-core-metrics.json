@@ -1,0 +1,110 @@
+[
+  {
+    "pattern": "java.lang:type=GarbageCollector,name=*",
+    "attributes": [
+      {
+        "name": "CollectionCount",
+        "alias": "jvm.#{type}.#{name}.#{attr}"
+      }, {
+        "name": "CollectionTime",
+        "alias": "jvm.#{type}.#{name}.#{attr}"
+      }
+    ]
+  }, {
+  "pattern": "java.lang:type=MemoryPool,name=*",
+  "attributes": [
+    {
+      "name": "Usage.used",
+      "alias": "jvm.#{type}.#{name}.#{attr}"
+    }, {
+      "name": "Usage.init",
+      "alias": "jvm.#{type}.#{name}.#{attr}"
+    }, {
+      "name": "Usage.committed",
+      "alias": "jvm.#{type}.#{name}.#{attr}"
+    }, {
+      "name": "Usage.max",
+      "alias": "jvm.#{type}.#{name}.#{attr}"
+    }
+  ]
+}, {
+  "pattern": "java.lang:type=Compilation",
+  "attributes": [
+    {
+      "name": "TotalCompilationTime",
+      "alias": "jvm.#{type}.#{attr}"
+    }
+  ]
+}, {
+  "pattern": "java.lang:type=ClassLoading",
+  "attributes": [
+    {
+      "name": "LoadedClassCount",
+      "alias": "jvm.#{type}.#{attr}"
+    }, {
+      "name": "UnloadedClassCount",
+      "alias": "jvm.#{type}.#{attr}"
+    }, {
+      "name": "TotalLoadedClassCount",
+      "alias": "jvm.#{type}.#{attr}"
+    }
+  ]
+}, {
+  "pattern": "java.lang:type=Threading",
+  "attributes": [
+    {
+      "name": "ThreadCount",
+      "alias": "jvm.#{type}.#{attr}"
+    }, {
+      "name": "DaemonThreadCount",
+      "alias": "jvm.#{type}.#{attr}"
+    }
+  ]
+}, {
+  "pattern": "java.nio:type=BufferPool,name=*",
+  "attributes": [
+    {
+      "name": "Count",
+      "alias": "jvm.#{type}.#{name}.#{attr}"
+    }, {
+      "name": "MemoryUsed",
+      "alias": "jvm.#{type}.#{name}.#{attr}"
+    }, {
+      "name": "TotalCapacity",
+      "alias": "jvm.#{type}.#{name}.#{attr}"
+    }
+  ]
+}, {
+  "pattern": "java.lang:type=Memory",
+  "attributes": [
+    {
+      "name": "HeapMemoryUsage.used",
+      "alias": "jvm.#{type}.#{attr}"
+    }, {
+      "name": "HeapMemoryUsage.init",
+      "alias": "jvm.#{type}.#{attr}"
+    }, {
+      "name": "HeapMemoryUsage.committed",
+      "alias": "jvm.#{type}.#{attr}"
+    }, {
+      "name": "HeapMemoryUsage.max",
+      "alias": "jvm.#{type}.#{attr}"
+    }, {
+      "name": "NonHeapMemoryUsage.used",
+      "alias": "jvm.#{type}.#{attr}"
+    }, {
+      "name": "NonHeapMemoryUsage.init",
+      "alias": "jvm.#{type}.#{attr}"
+    }, {
+      "name": "NonHeapMemoryUsage.committed",
+      "alias": "jvm.#{type}.#{attr}"
+    }, {
+      "name": "NonHeapMemoryUsage.max",
+      "alias": "jvm.#{type}.#{attr}"
+    }, {
+      "name": "ObjectPendingFinalizationCount",
+      "alias": "jvm.#{type}.#{attr}"
+    }
+  ]
+}
+]

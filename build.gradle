@@ -1,0 +1,120 @@
+buildscript {
+    repositories {
+        maven { url "https://repo.spring.io/snapshot" }
+        maven { url "https://repo.spring.io/milestone" }
+        maven { url "https://repo.spring.io/release" }
+        jcenter()
+    }
+    dependencies {
+        classpath "org.springframework.boot:spring-boot-gradle-plugin:1.3.5.RELEASE"
+        classpath 'com.netflix.nebula:gradle-ospackage-plugin:3.5.0'
+    }
+}
+
+apply plugin: "application"
+apply plugin: "spring-boot"
+apply plugin: 'nebula.ospackage'
+
+
+sourceCompatibility = 8
+targetCompatibility = 8
+version = "0.3.39"
+
+mainClassName = "org.jmx.JmxCollectorMain"
+
+repositories {
+    maven { url "https://repo.spring.io/snapshot" }
+    maven { url "https://repo.spring.io/milestone" }
+    maven { url "https://repo.spring.io/release" }
+    mavenCentral()
+}
+
+
+dependencies {
+    ext.versions = [
+      "jackson" : "2.7.2"
+    ]
+
+    compile "org.springframework.boot:spring-boot-starter"
+    compile "org.springframework.boot:spring-boot-starter-logging"
+
+    compile "com.google.guava:guava:19.0"
+
+//    compile "org.slf4j:slf4j-api:${ext.versions.slf4j}"
+
+    compile "com.google.code.findbugs:jsr305:1.3.9"
+
+
+    compile "com.fasterxml.jackson.core:jackson-core:${ext.versions.jackson}"
+    compile "com.fasterxml.jackson.core:jackson-databind:${ext.versions.jackson}"
+    compile "com.fasterxml.jackson.core:jackson-annotations:${ext.versions.jackson}"
+
+    compile group: 'com.indeed', name: 'java-dogstatsd-client', version: '2.0.16'
+
+    compileOnly files("${System.properties['java.home']}/../lib/tools.jar")
+
+    testCompile( "org.spockframework:spock-core:1.0-groovy-2.4") {
+        exclude module: "groovy-all"
+    }
+}
+
+startScripts {
+    doLast {
+        def windowsScriptFile = file getWindowsScript()
+        windowsScriptFile.text = windowsScriptFile.text.replace('set CLASSPATH=', 'set CLASSPATH=%JAVA_HOME%\\lib\\tools.jar')
+    }
+}
+
+bootRepackage {
+    executable = true
+    excludeDevtools = true
+    embeddedLaunchScript = file('rpm/launch.sh')
+}
+
+ospackage {
+    packageName = 'thps-jmx-collector'
+    version = "${project.version}"
+    release = 1
+    arch = 'x86_64'
+    type = BINARY
+    os = LINUX
+
+    user "root"
+    permissionGroup "root"
+
+    preInstall file('rpm/preInstall.sh')
+    postInstall file("rpm/postInstall.sh")
+    preUninstall file("rpm/preUninstall.sh")
+    postUninstall file('rpm/postUninstall.sh')
+
+    into "/opt/jmx-collector-${project.version}"
+
+    from(jar.outputs.files) {
+        // Strip the version from the jar filename
+        rename { String fileName ->
+            fileName.replace("-${project.version}", "")
+        }
+        fileMode 0500
+    }
+    from ('rpm') {
+        include 'jdk*.gz'
+    }
+
+    from('rpm/conf') {
+        into "/etc/jmx-collector"
+    }
+}
+
+buildRpm {
+    user "root"
+    permissionGroup "root"
+    link("/etc/jmx-collector", "/opt/jmx-collector-${project.version}")
+    link("/etc/init.d/jmx-collector", "/opt/jmx-collector/jmx-collector.jar")
+}
+
+buildRpm.dependsOn bootRepackage
+task wrapper(type: Wrapper) {
+    gradleVersion = "2.13"
+}
+
+

@@ -1,0 +1,3 @@
+jmxcollector.pollRateMs=10000
+jmxcollector.statsdHost=127.0.0.1
+jmxcollector.statsdPort=8125

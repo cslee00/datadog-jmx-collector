@@ -1,0 +1,10 @@
+[
+  {
+    "jvmSelector": "#appArgs.contains('jmx-collector')",
+    "jvmNameExtractor": "'jmx-collector'",
+    "tags": ["jvm-type:jmx-collector"],
+    "metricSetRefs": [
+      "builtin:jmx-collector-metrics.json"
+    ]
+  }
+]

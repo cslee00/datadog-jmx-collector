@@ -1,0 +1,14 @@
+[
+  {
+    "pattern": "thps.jmx-collector:name=collectorMetrics,type=MetricsMXBean",
+    "attributes": [
+      {
+        "name": "MetricsCollected",
+        "alias": "jmx-collector.#{attr}"
+      }, {
+        "name": "ServerPolls",
+        "alias": "jmx-collector.#{attr}"
+      }
+    ]
+  }
+]
