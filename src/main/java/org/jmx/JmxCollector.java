@@ -52,6 +52,8 @@ import com.google.common.collect.Iterables;
 import com.sun.tools.attach.VirtualMachineDescriptor;
 import com.timgroup.statsd.StatsDClient;
 
+import sun.tools.attach.WindowsAttachProvider;
+
 public final class JmxCollector implements ApplicationRunner {
 
     private final Logger logger = LoggerFactory.getLogger( getClass() );
@@ -83,10 +85,15 @@ public final class JmxCollector implements ApplicationRunner {
 
         logger.info( "Non-option args: {}", args.getNonOptionArgs() );
         logger.info( "Option names: {}", args.getOptionNames() );
+        logger.info( "JVM home: {}", System.getProperty( "java.home" ) );
 
         if( args.getNonOptionArgs().contains( "list" ) ) {
-            doList();
-            return;
+            try {
+                doList();
+            } catch( Throwable e ) {
+                logger.error( "Error listing JVMs", e );
+            }
+            System.exit(0);
         }
 
         ConfigurationLoader configurationLoader = new ConfigurationLoader( objectMapper );
@@ -112,7 +119,7 @@ public final class JmxCollector implements ApplicationRunner {
             try {
                 Object obj = mBeanServer.getAttribute( objectName, attr.getName() );
                 if( obj instanceof Number ) {
-                    attributes.add(  String.format( "%s=%s", attr.getName(), obj ) );
+                    attributes.add( String.format( "%s=%s", attr.getName(), obj ) );
                 }
                 if( obj instanceof CompositeDataSupport ) {
 
@@ -133,8 +140,8 @@ public final class JmxCollector implements ApplicationRunner {
     }
 
     private void doList() {
+        logger.info( "Listing JVMs..." );
         List<VirtualMachineDescriptor> descriptors = com.sun.tools.attach.VirtualMachine.list();
-
         for( VirtualMachineDescriptor vmd : descriptors ) {
             try {
                 com.sun.tools.attach.VirtualMachine vm = com.sun.tools.attach.VirtualMachine.attach( vmd );
@@ -154,17 +161,20 @@ public final class JmxCollector implements ApplicationRunner {
                 try( JMXConnector connector = JMXConnectorFactory.connect( jmxUrl ) ) {
                     final MBeanServerConnection mbeanServerConnection = connector.getMBeanServerConnection();
 
+                    logger.info("#appArgs={}",vm.getAgentProperties().getProperty( "sun.java.command" ) );
+                    logger.info("#systemProps={}",vm.getSystemProperties());
+
                     Set<ObjectName> objectNames = new TreeSet<>( mbeanServerConnection.queryNames( null, null ) );
                     for( ObjectName objectName : objectNames ) {
                         List<String> attributes = gatherAttributes( mbeanServerConnection, objectName );
-                        System.out.printf("\t%s\n", objectName );
+                        System.out.printf( "\t%s\n", objectName );
                         for( String attribute : attributes ) {
-                            System.out.printf("\t\t%s\n", attribute );
+                            System.out.printf( "\t\t%s\n", attribute );
                         }
                     }
                 }
             } catch( Exception e ) {
-                logger.info( "Unable to connect to JVM {} {} : {}", vmd.id(), vmd.displayName(), e.getMessage() );
+                logger.warn( "Unable to connect to JVM {} {} : {}", vmd.id(), vmd.displayName(), e.getMessage() );
             }
         }
     }

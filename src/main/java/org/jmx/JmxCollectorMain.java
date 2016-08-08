@@ -56,7 +56,14 @@ public class JmxCollectorMain {
     private String configFile;
 
     public static void main( String[] args ) {
-        SpringApplication.run( JmxCollectorMain.class, args );
+        System.setProperty( "networkaddress.cache.ttl", "30" );
+        System.setProperty( "sun.net.inetaddr.ttl", "30" );
+        SpringApplication app = new SpringApplication( JmxCollectorMain.class );
+        if( System.getProperty( "os.name" ).toLowerCase().contains( "win" ) ) {
+            app.setAdditionalProfiles( "windows" );
+            System.setProperty( "java.library.path", System.getProperty( "java.home" ) + "\\jre\\bin\\" );
+        }
+        app.run( args );
     }
 
     @Bean

@@ -18,7 +18,7 @@ apply plugin: 'nebula.ospackage'
 
 sourceCompatibility = 8
 targetCompatibility = 8
-version = "0.3.39"
+version = "0.5.0"
 
 mainClassName = "org.jmx.JmxCollectorMain"
 
@@ -59,7 +59,7 @@ dependencies {
 }
 
 startScripts {
-    doLast {
+        doLast {
         def windowsScriptFile = file getWindowsScript()
         windowsScriptFile.text = windowsScriptFile.text.replace('set CLASSPATH=', 'set CLASSPATH=%JAVA_HOME%\\lib\\tools.jar')
     }
