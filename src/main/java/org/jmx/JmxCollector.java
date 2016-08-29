@@ -23,18 +23,16 @@ import javax.management.ObjectName;
 import javax.management.ReflectionException;
 import javax.management.openmbean.CompositeData;
 import javax.management.openmbean.CompositeDataSupport;
-import javax.management.remote.JMXConnector;
-import javax.management.remote.JMXConnectorFactory;
-import javax.management.remote.JMXServiceURL;
 
 import org.jmx.config.ConfigurationLoader;
 import org.jmx.config.JmxAttribute;
 import org.jmx.config.JvmInstanceConfiguration;
 import org.jmx.config.MetricQuery;
 import org.jmx.config.MetricType;
-import org.jmx.connection.JmxConnectionOperations;
-import org.jmx.connection.JmxConnectionStateResolver;
+import org.jmx.connection.JmxConnection;
+import org.jmx.connection.JmxConnectionCache;
 import org.jmx.connection.UnableToAttachException;
+import org.jmx.connection.VirtualMachineConnector;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.ApplicationArguments;
@@ -52,14 +50,12 @@ import com.google.common.collect.Iterables;
 import com.sun.tools.attach.VirtualMachineDescriptor;
 import com.timgroup.statsd.StatsDClient;
 
-import sun.tools.attach.WindowsAttachProvider;
-
 public final class JmxCollector implements ApplicationRunner {
 
     private final Logger logger = LoggerFactory.getLogger( getClass() );
     private final TaskScheduler taskScheduler;
     private final TaskExecutor taskExecutor;
-    private final JmxConnectionStateResolver jmxConnectionStateResolver;
+    private final JmxConnectionCache jmxConnectionStateResolver;
     private final int rateMs;
     private final StatsDClient statsDClient;
     private final ObjectMapper objectMapper;
@@ -67,7 +63,7 @@ public final class JmxCollector implements ApplicationRunner {
     private final MetricsMXBean collectorMetrics;
 
     public JmxCollector( MetricsMXBean metricsMXBean, String configFile, TaskScheduler taskScheduler, TaskExecutor taskExecutor, int rateMs,
-      JmxConnectionStateResolver jmxConnectionStateResolver, StatsDClient statsDClient, ObjectMapper objectMapper ) {
+      JmxConnectionCache jmxConnectionStateResolver, StatsDClient statsDClient, ObjectMapper objectMapper ) {
         this.taskScheduler = checkNotNull( taskScheduler, "taskScheduler is required" );
         this.taskExecutor = checkNotNull( taskExecutor, "taskExecutor is required" );
         this.jmxConnectionStateResolver = checkNotNull( jmxConnectionStateResolver, "jmxConnectionStateResolver is required" );
@@ -87,25 +83,25 @@ public final class JmxCollector implements ApplicationRunner {
         logger.info( "Option names: {}", args.getOptionNames() );
         logger.info( "JVM home: {}", System.getProperty( "java.home" ) );
 
+        ConfigurationLoader configurationLoader = new ConfigurationLoader( objectMapper );
+        List<JvmInstanceConfiguration> jvmInstanceConfigurations = configurationLoader.loadConfiguration( new FileSystemResource( configFile ) );
+
         if( args.getNonOptionArgs().contains( "list" ) ) {
             try {
-                doList();
+                doList( jvmInstanceConfigurations );
             } catch( Throwable e ) {
                 logger.error( "Error listing JVMs", e );
             }
-            System.exit(0);
+            System.exit( 0 );
         }
-
-        ConfigurationLoader configurationLoader = new ConfigurationLoader( objectMapper );
-
-        List<JvmInstanceConfiguration> jvmInstanceConfigurations = configurationLoader.loadConfiguration( new FileSystemResource( configFile ) );
 
         logger.info( "Starting up; polling JVMs every {}ms", rateMs );
         taskScheduler.scheduleAtFixedRate( () -> {
             List<VirtualMachineDescriptor> descriptors = com.sun.tools.attach.VirtualMachine.list();
-            descriptors.stream().forEach( descriptor -> {
-                taskExecutor.execute( () -> pollMetrics( descriptor, jvmInstanceConfigurations ) );
-            } );
+            List<VirtualMachineConnector> connectors = JmxUtils.enumerateJvms( jvmInstanceConfigurations );
+            for( VirtualMachineConnector connector : connectors ) {
+                taskExecutor.execute( () -> pollMetrics( connector ) );
+            }
         }, rateMs );
     }
 
@@ -139,88 +135,70 @@ public final class JmxCollector implements ApplicationRunner {
         return ImmutableList.copyOf( attributes );
     }
 
-    private void doList() {
+    private void doList( List<JvmInstanceConfiguration> jvmInstanceConfigurations ) {
         logger.info( "Listing JVMs..." );
-        List<VirtualMachineDescriptor> descriptors = com.sun.tools.attach.VirtualMachine.list();
-        for( VirtualMachineDescriptor vmd : descriptors ) {
-            try {
-                com.sun.tools.attach.VirtualMachine vm = com.sun.tools.attach.VirtualMachine.attach( vmd );
-                String connectorAddress = vm.getAgentProperties().getProperty( JmxUtils.CONNECTOR_ADDRESS );
-                //If jmx agent is not running in VM, load it
-                if( connectorAddress == null ) {
-                    logger.info( "Loading JMX agent for JVM {}", vmd.id() );
-                    JmxUtils.loadJMXAgent( vm );
-
-                    // agent is started, get the connector address
-                    connectorAddress = vm.getAgentProperties().getProperty( JmxUtils.CONNECTOR_ADDRESS );
-                }
-
-                JMXServiceURL jmxUrl = new JMXServiceURL( connectorAddress );
-                logger.info( "Connecting to JVM {} via {}", vmd, jmxUrl );
-
-                try( JMXConnector connector = JMXConnectorFactory.connect( jmxUrl ) ) {
-                    final MBeanServerConnection mbeanServerConnection = connector.getMBeanServerConnection();
-
-                    logger.info("#appArgs={}",vm.getAgentProperties().getProperty( "sun.java.command" ) );
-                    logger.info("#systemProps={}",vm.getSystemProperties());
-
-                    Set<ObjectName> objectNames = new TreeSet<>( mbeanServerConnection.queryNames( null, null ) );
-                    for( ObjectName objectName : objectNames ) {
-                        List<String> attributes = gatherAttributes( mbeanServerConnection, objectName );
-                        System.out.printf( "\t%s\n", objectName );
-                        for( String attribute : attributes ) {
-                            System.out.printf( "\t\t%s\n", attribute );
-                        }
+        List<VirtualMachineConnector> connectors = JmxUtils.enumerateJvms( jvmInstanceConfigurations );
+        for( VirtualMachineConnector connector : connectors ) {
+            try( JmxConnection connection = connector.connect() ) {
+                logger.info( "#appArgs={}", connection.getConnectionMetaData().getAppArgs() );
+                logger.info( "#systemProps={}", connection.getConnectionMetaData().getSystemProperties() );
+                Set<ObjectName> objectNames = new TreeSet<>( connection.getMbeanServerConnection().queryNames( null, null ) );
+                for( ObjectName objectName : objectNames ) {
+                    List<String> attributes = gatherAttributes( connection.getMbeanServerConnection(), objectName );
+                    System.out.printf( "\t%s\n", objectName );
+                    for( String attribute : attributes ) {
+                        System.out.printf( "\t\t%s\n", attribute );
                     }
                 }
             } catch( Exception e ) {
-                logger.warn( "Unable to connect to JVM {} {} : {}", vmd.id(), vmd.displayName(), e.getMessage() );
+                logger.warn( "Unable to connect to {}", connector, e );
             }
         }
     }
 
-    private final Cache<String, Boolean> failedAttachCache = CacheBuilder.newBuilder().expireAfterWrite( 30, TimeUnit.MINUTES ).maximumSize( 2000 ).build();
+    private final Cache<VirtualMachineConnector, Boolean> failedAttachCache = CacheBuilder.newBuilder().expireAfterWrite( 30, TimeUnit.MINUTES ).maximumSize( 2000 ).build();
 
-    private void pollMetrics( VirtualMachineDescriptor descriptor, List<JvmInstanceConfiguration> jvmInstanceConfigurations ) {
+    private void pollMetrics( VirtualMachineConnector connector ) {
 
         try {
-            if( failedAttachCache.getIfPresent( descriptor.id() ) != null ) {
-                logger.debug( "Skipping due to previous failures / configuration: {}", descriptor );
+            if( failedAttachCache.getIfPresent( connector ) != null ) {
+                logger.debug( "Skipping due to previous failures / configuration: {}", connector );
                 return;
             }
 
-            logger.debug( "Checking connectivity to {}", descriptor.displayName() );
-            JmxConnectionOperations jmxConnectionOperations = jmxConnectionStateResolver.resolveJmxConnectionState( descriptor, jvmInstanceConfigurations );
+            logger.debug( "Checking connectivity to {}", connector );
+            JmxConnection connection = jmxConnectionStateResolver.lookup( connector );
             collectorMetrics.incrementServerPolls();
+
+            if( connection.getConnectionMetaData().getJvmInstanceConfiguration() == null ) {
+                throw new UnableToAttachException( "Not a matching JVM : " + connection );
+            }
 
             Stopwatch metricPollStopwatch = Stopwatch.createStarted();
             int metricsPolled = 0;
-            for( MetricQuery metricQuery : jmxConnectionOperations.getJvmInstanceConfiguration().getMetricSet() ) {
-                metricsPolled += resolveMetricQuery( metricQuery, jmxConnectionOperations );
+            for( MetricQuery metricQuery : connection.getConnectionMetaData().getJvmInstanceConfiguration().getMetricSet() ) {
+                metricsPolled += resolveMetricQuery( metricQuery, connection );
             }
 
             metricPollStopwatch.stop();
-            logger.info( "Polled {} metrics in {}ms {}", metricsPolled, metricPollStopwatch.elapsed( TimeUnit.MILLISECONDS ), jmxConnectionOperations.getJvmInstanceTags() );
-        } catch( UnableToAttachException ignored ) {
-            logger.debug( "Unable to attach to {} {}", descriptor.displayName(), ignored );
-            failedAttachCache.put( descriptor.id(), true );
-        } catch( IOException | InstanceNotFoundException | ReflectionException e ) {
-            logger.error( "Error attaching to {}", e );
-            failedAttachCache.put( descriptor.id(), true );
+            logger.info( "Polled {} metrics in {}ms {}", metricsPolled, metricPollStopwatch.elapsed( TimeUnit.MILLISECONDS ),
+              connection.getConnectionMetaData().getJvmInstanceTags() );
+        } catch( Exception ignored ) {
+            logger.debug( "Unable to attach to {}", connector, ignored );
+            failedAttachCache.put( connector, true );
         }
     }
 
-    private int resolveMetricQuery( MetricQuery metricQuery, JmxConnectionOperations jmxConnectionOperations )
-      throws IOException, ReflectionException, InstanceNotFoundException {
+    private int resolveMetricQuery( MetricQuery metricQuery, JmxConnection connection ) throws IOException, ReflectionException, InstanceNotFoundException {
         int metricsPolled = 0;
-        Set<ObjectName> matchingObjectNames = jmxConnectionOperations.queryNames( metricQuery.getPattern() );
+        Set<ObjectName> matchingObjectNames = connection.queryNames( metricQuery.getPattern() );
 
         for( ObjectName objectName : matchingObjectNames ) {
-            AttributeList list = jmxConnectionOperations.getAttributes( objectName, metricQuery.getUniqueAttributeNames() );
+            AttributeList list = connection.getAttributes( objectName, metricQuery.getUniqueAttributeNames() );
             metricsPolled++;
             for( Object attr : list ) {
                 try {
-                    processAttribute( metricQuery, objectName, (Attribute) attr, jmxConnectionOperations.getJvmInstanceTags() );
+                    processAttribute( metricQuery, objectName, (Attribute) attr, connection.getConnectionMetaData().getJvmInstanceTags() );
                 } catch( Exception e ) {
                     logger.error( "Error processing attribute {}", attr, e );
                 }

@@ -3,6 +3,7 @@ package org.jmx.config;
 import static com.google.common.base.Preconditions.*;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
@@ -51,9 +52,10 @@ public class ConfigurationLoader {
 
     private List<JvmInstanceConfiguration> loadJvmInstanceConfig( Resource res ) throws IOException {
         logger.info( "Loading JVM monitoring configuration from {}", res );
-        // TODO - manage input stream
-        return objectMapper.readValue( res.getInputStream(), new TypeReference<List<JvmInstanceConfiguration>>() {
-          } );
+        try( InputStream is = res.getInputStream() ) {
+            return objectMapper.readValue( is, new TypeReference<List<JvmInstanceConfiguration>>() {
+            } );
+        }
     }
 
     private void resolveMetricSetRefs( List<JvmInstanceConfiguration> jvmInstanceConfigurations, Resource primaryConfig, List<MetricQuery> coreJvmMetrics )

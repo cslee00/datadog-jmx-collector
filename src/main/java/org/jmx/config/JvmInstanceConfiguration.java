@@ -5,12 +5,23 @@ import java.util.List;
 import org.springframework.expression.Expression;
 
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.Range;
 
 public final class JvmInstanceConfiguration {
     private Expression jvmSelector;
     private Expression jvmNameExtractor;
     private List<String> tags = ImmutableList.of();
     private List<String> metricSetRefs = ImmutableList.of();
+
+    public Range<Integer> getJmxPortRange() {
+        return jmxPortRange;
+    }
+
+    public void setJmxPortRange( Range<Integer> jmxPortRange ) {
+        this.jmxPortRange = jmxPortRange;
+    }
+
+    private Range<Integer> jmxPortRange;
 
     public List<MetricQuery> getMetricSet() {
         return metricSet;
