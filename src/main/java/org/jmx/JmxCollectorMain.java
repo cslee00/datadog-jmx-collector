@@ -24,9 +24,13 @@ import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler;
 
 import com.fasterxml.jackson.core.JsonParser;
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.BeanDescription;
+import com.fasterxml.jackson.databind.DeserializationConfig;
 import com.fasterxml.jackson.databind.DeserializationContext;
+import com.fasterxml.jackson.databind.JavaType;
 import com.fasterxml.jackson.databind.JsonDeserializer;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.deser.BeanDeserializerModifier;
 import com.fasterxml.jackson.databind.module.SimpleModule;
 import com.google.common.base.Splitter;
 import com.google.common.collect.Range;
@@ -102,7 +106,7 @@ public class JmxCollectorMain {
     public ObjectMapper objectMapper() {
         ObjectMapper mapper = new ObjectMapper();
         SimpleModule module = new SimpleModule();
-       /* module.setDeserializerModifier( new BeanDeserializerModifier() {
+        module.setDeserializerModifier( new BeanDeserializerModifier() {
             @Override
             public JsonDeserializer<Enum> modifyEnumDeserializer( DeserializationConfig config, final JavaType type, BeanDescription beanDesc,
               final JsonDeserializer<?> deserializer ) {
@@ -114,7 +118,7 @@ public class JmxCollectorMain {
                     }
                 };
             }
-        } );*/
+        } );
 
         module.addDeserializer( Expression.class, new ExpressionDeserializer( expressionParser() ) );
         module.addDeserializer( Range.class, new RangeDeserializer() );
